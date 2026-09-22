@@ -2,7 +2,6 @@ import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import { connectDB } from './config/db.js';
-import { seedAdminAndDefaults } from './services/seedService.js';
 import authRoutes from './routes/authRoutes.js';
 import clientRoutes from './routes/clientRoutes.js';
 import serviceRoutes from './routes/serviceRoutes.js';
@@ -15,7 +14,6 @@ dotenv.config();
 await connectDB();
 
 // Run automated seed for admin and initial data
-await seedAdminAndDefaults();
 
 const app = express();
 

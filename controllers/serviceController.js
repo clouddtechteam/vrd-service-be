@@ -22,7 +22,17 @@ const generateRequestId = async () => {
 // @access  Private (Client or Admin)
 export const createServiceRequest = async (req, res) => {
   try {
-    const { serviceType, expectedDate, description, additionalInfo } = req.body;
+    const {
+      serviceType,
+      expectedDate,
+      description,
+      additionalInfo,
+      managerName,
+      storeName,
+      storeCode,
+      email,
+      phone
+    } = req.body;
 
     if (!serviceType || !serviceType.trim()) {
       return res.status(400).json({
@@ -56,6 +66,11 @@ export const createServiceRequest = async (req, res) => {
       client: clientId,
       serviceType: serviceType.trim(),
       expectedDate: new Date(expectedDate),
+      managerName: managerName ? managerName.trim() : '',
+      storeName: storeName ? storeName.trim() : '',
+      storeCode: storeCode ? storeCode.trim() : '',
+      email: email ? email.trim() : '',
+      phone: phone ? phone.trim() : '',
       description: description.trim(),
       additionalInfo: additionalInfo ? additionalInfo.trim() : '',
       status: initialStatus,
@@ -147,7 +162,10 @@ export const getAllServiceRequests = async (req, res) => {
         { client: { $in: clientIds } },
         { requestId: { $regex: search, $options: 'i' } },
         { serviceType: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } }
+        { description: { $regex: search, $options: 'i' } },
+        { managerName: { $regex: search, $options: 'i' } },
+        { storeName: { $regex: search, $options: 'i' } },
+        { storeCode: { $regex: search, $options: 'i' } }
       ];
 
       if (query.$or) {
@@ -198,10 +216,10 @@ export const updateServiceStatus = async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
 
-    if (!['Pending', 'Completed', 'Cancelled'].includes(status)) {
+    if (!['Pending', 'In Progress', 'Completed', 'Cancelled'].includes(status)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid status. Status can only be "Pending", "Completed", or "Cancelled".'
+        message: 'Invalid status. Status can only be "Pending", "In Progress", "Completed", or "Cancelled".'
       });
     }
 
@@ -245,6 +263,7 @@ export const getAnalyticsOverview = async (req, res) => {
     const activeClients = await User.countDocuments({ role: 'client', status: 'active' });
     const totalServices = await ServiceRequest.countDocuments();
     const pendingServices = await ServiceRequest.countDocuments({ status: 'Pending' });
+    const inProgressServices = await ServiceRequest.countDocuments({ status: 'In Progress' });
     const completedServices = await ServiceRequest.countDocuments({ status: 'Completed' });
     const cancelledServices = await ServiceRequest.countDocuments({ status: 'Cancelled' });
 
@@ -271,6 +290,7 @@ export const getAnalyticsOverview = async (req, res) => {
         activeClients,
         totalServices,
         pendingServices,
+        inProgressServices,
         completedServices,
         cancelledServices,
         completionRate,

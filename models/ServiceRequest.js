@@ -23,6 +23,31 @@ const serviceRequestSchema = new mongoose.Schema(
       type: Date,
       required: [true, 'Expected date is required']
     },
+    managerName: {
+      type: String,
+      trim: true,
+      default: ''
+    },
+    storeName: {
+      type: String,
+      trim: true,
+      default: ''
+    },
+    storeCode: {
+      type: String,
+      trim: true,
+      default: ''
+    },
+    email: {
+      type: String,
+      trim: true,
+      default: ''
+    },
+    phone: {
+      type: String,
+      trim: true,
+      default: ''
+    },
     description: {
       type: String,
       required: [true, 'Service description is required'],
@@ -35,7 +60,7 @@ const serviceRequestSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['Pending', 'Completed', 'Cancelled'],
+      enum: ['Pending', 'In Progress', 'Completed', 'Cancelled'],
       default: 'Pending',
       index: true
     },
