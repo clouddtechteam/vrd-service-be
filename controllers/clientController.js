@@ -14,6 +14,7 @@ export const getClients = async (req, res) => {
 
     if (search) {
       query.$or = [
+        { userId: { $regex: search, $options: 'i' } },
         { name: { $regex: search, $options: 'i' } },
         { email: { $regex: search, $options: 'i' } },
         { phone: { $regex: search, $options: 'i' } },
@@ -97,19 +98,31 @@ export const getClientById = async (req, res) => {
 // @access  Private (Admin only)
 export const createClient = async (req, res) => {
   try {
-    const { name, email, password, phone, company, status } = req.body;
+    const { userId, name, email, password, phone, company, status } = req.body;
 
-    if (!name || !email || !password) {
+    // User ID, name, email, and password are strictly mandatory
+    if (!userId || !userId.trim() || !name || !email || !password) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide name, email, and password.'
+        message: 'Please provide User ID, full name, email, and password.'
       });
     }
 
+    const normalizedUserId = userId.trim();
     const normalizedEmail = email.toLowerCase().trim();
-    const existingUser = await User.findOne({ email: normalizedEmail });
 
-    if (existingUser) {
+    // Check unique User ID
+    const existingUserId = await User.findOne({ userId: normalizedUserId });
+    if (existingUserId) {
+      return res.status(400).json({
+        success: false,
+        message: `User ID "${normalizedUserId}" is already in use. Please provide a unique User ID.`
+      });
+    }
+
+    // Check unique Email
+    const existingEmail = await User.findOne({ email: normalizedEmail });
+    if (existingEmail) {
       return res.status(400).json({
         success: false,
         message: 'A user with this email address already exists.'
@@ -117,6 +130,7 @@ export const createClient = async (req, res) => {
     }
 
     const client = await User.create({
+      userId: normalizedUserId,
       name: name.trim(),
       email: normalizedEmail,
       password,
@@ -136,6 +150,15 @@ export const createClient = async (req, res) => {
     });
   } catch (error) {
     console.error('[Create Client Error]:', error.message);
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern || {})[0];
+      return res.status(400).json({
+        success: false,
+        message: field === 'userId'
+          ? 'This User ID is already taken. Please choose a different User ID.'
+          : 'A user with this email address already exists.'
+      });
+    }
     res.status(500).json({
       success: false,
       message: 'Failed to create client account',
@@ -150,7 +173,7 @@ export const createClient = async (req, res) => {
 export const updateClient = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, email, phone, company, status, password } = req.body;
+    const { userId, name, email, phone, company, status, password } = req.body;
 
     const client = await User.findOne({ _id: id, role: 'client' });
     if (!client) {
@@ -158,6 +181,22 @@ export const updateClient = async (req, res) => {
         success: false,
         message: 'Client not found'
       });
+    }
+
+    // Check if new userId is taken by another account
+    if (userId && userId.trim() !== client.userId) {
+      const normalizedUserId = userId.trim();
+      const userIdTaken = await User.findOne({
+        userId: normalizedUserId,
+        _id: { $ne: id }
+      });
+      if (userIdTaken) {
+        return res.status(400).json({
+          success: false,
+          message: `User ID "${normalizedUserId}" is already taken by another account.`
+        });
+      }
+      client.userId = normalizedUserId;
     }
 
     // Check if new email is taken by another user
@@ -195,6 +234,15 @@ export const updateClient = async (req, res) => {
     });
   } catch (error) {
     console.error('[Update Client Error]:', error.message);
+    if (error.code === 11000) {
+      const field = Object.keys(error.keyPattern || {})[0];
+      return res.status(400).json({
+        success: false,
+        message: field === 'userId'
+          ? 'This User ID is already taken by another account.'
+          : 'This email is already in use by another account.'
+      });
+    }
     res.status(500).json({
       success: false,
       message: 'Failed to update client',
@@ -250,10 +298,12 @@ export const bulkCreateClients = async (req, res) => {
     const created = [];
     const skipped = [];
     const processedEmails = new Set();
+    const processedUserIds = new Set();
 
     for (const item of items) {
       const name = item.name ? String(item.name).trim() : '';
       const email = item.email ? String(item.email).toLowerCase().trim() : '';
+      let userId = item.userId || item.userid || item['User ID'] ? String(item.userId || item.userid || item['User ID']).trim() : '';
       const phone = item.phone ? String(item.phone).trim() : '';
       const company = item.company ? String(item.company).trim() : '';
       const status = item.status ? String(item.status).toLowerCase().trim() : 'active';
@@ -268,12 +318,22 @@ export const bulkCreateClients = async (req, res) => {
         continue;
       }
 
-      // Check for duplicate in current batch
+      // Check for duplicate email in current batch
       if (processedEmails.has(email)) {
         skipped.push({
           name,
           email,
           reason: 'Duplicate email in current file'
+        });
+        continue;
+      }
+
+      // If userId provided, check batch duplicate
+      if (userId && processedUserIds.has(userId)) {
+        skipped.push({
+          name,
+          email,
+          reason: `Duplicate User ID "${userId}" in current file`
         });
         continue;
       }
@@ -289,10 +349,27 @@ export const bulkCreateClients = async (req, res) => {
         continue;
       }
 
+      // If userId provided, check DB duplicate
+      if (userId) {
+        const existingUserId = await User.findOne({ userId });
+        if (existingUserId) {
+          skipped.push({
+            name,
+            email,
+            reason: `User ID "${userId}" already exists in database`
+          });
+          continue;
+        }
+      } else {
+        // Auto-generate unique fallback userId
+        userId = `CLI-${Date.now().toString().slice(-4)}${Math.floor(100 + Math.random() * 900)}`;
+      }
+
       // Default password is email as per requirement
       const defaultPassword = email;
 
       const client = await User.create({
+        userId,
         name,
         email,
         password: defaultPassword,
@@ -307,6 +384,7 @@ export const bulkCreateClients = async (req, res) => {
 
       created.push(clientObj);
       processedEmails.add(email);
+      processedUserIds.add(userId);
     }
 
     res.json({

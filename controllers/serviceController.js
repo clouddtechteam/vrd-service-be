@@ -1,5 +1,6 @@
 import ServiceRequest from '../models/ServiceRequest.js';
 import User from '../models/User.js';
+import { sendNewServiceRequestAlert } from '../utils/emailAlert.js';
 
 // Helper to generate unique human-readable Request ID
 const generateRequestId = async () => {
@@ -79,8 +80,13 @@ export const createServiceRequest = async (req, res) => {
 
     const populated = await ServiceRequest.findById(serviceRequest._id).populate(
       'client',
-      'name email company phone'
+      'name userId email company phone'
     );
+
+    // Non-blocking email alert to admin via Gmail SMTP
+    sendNewServiceRequestAlert(populated, req.user).catch((err) => {
+      console.error('[EmailAlert Background Error]:', err.message);
+    });
 
     res.status(201).json({
       success: true,
@@ -107,7 +113,7 @@ export const getMyServiceRequests = async (req, res) => {
 
     const services = await ServiceRequest.find(query)
       .sort({ createdAt: -1 })
-      .populate('client', 'name email company phone');
+      .populate('client', 'name userId email company phone');
 
     res.json({
       success: true,
@@ -152,7 +158,8 @@ export const getAllServiceRequests = async (req, res) => {
         role: 'client',
         $or: [
           { name: { $regex: search, $options: 'i' } },
-          { email: { $regex: search, $options: 'i' } }
+          { email: { $regex: search, $options: 'i' } },
+          { userId: { $regex: search, $options: 'i' } }
         ]
       }).select('_id');
 
@@ -179,7 +186,7 @@ export const getAllServiceRequests = async (req, res) => {
     const total = await ServiceRequest.countDocuments(query);
     // Services ordered with the most recently created requests first
     const services = await ServiceRequest.find(query)
-      .populate('client', 'name email company phone')
+      .populate('client', 'name userId email company phone')
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit);

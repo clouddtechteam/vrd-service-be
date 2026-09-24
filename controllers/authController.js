@@ -12,21 +12,27 @@ const generateToken = (id, role) => {
 // @access  Public
 export const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, userId, identifier } = req.body;
+    const loginIdentifier = (identifier || userId || email || '').trim();
 
-    if (!email || !password) {
+    if (!loginIdentifier || !password) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide both email and password'
+        message: 'Please provide user ID / email and password'
       });
     }
 
-    const user = await User.findOne({ email: email.toLowerCase().trim() }).select('+password');
+    const user = await User.findOne({
+      $or: [
+        { email: loginIdentifier.toLowerCase() },
+        { userId: loginIdentifier }
+      ]
+    }).select('+password');
 
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid email or password'
+        message: 'Invalid credentials. Please check your User ID / email and password.'
       });
     }
 
@@ -34,7 +40,7 @@ export const login = async (req, res) => {
     if (!isMatch) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid email or password'
+        message: 'Invalid credentials. Please check your User ID / email and password.'
       });
     }
 
@@ -53,6 +59,7 @@ export const login = async (req, res) => {
       token,
       user: {
         id: user._id,
+        userId: user.userId || '',
         name: user.name,
         email: user.email,
         role: user.role,
@@ -89,6 +96,7 @@ export const getMe = async (req, res) => {
       success: true,
       user: {
         id: user._id,
+        userId: user.userId || '',
         name: user.name,
         email: user.email,
         role: user.role,
